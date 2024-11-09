@@ -196,7 +196,7 @@ async def discover_subdomains(domain):
             found_subdomains.append(target)
             logger.info(f"Discovered Subdomain: {target}")
         except Exception as e:
-            pass
+            logger.error(f"DNS Error for {subdomain}: {e}")
 
     tasks = [resolve_subdomain(sub) for sub in subdomains]
     await asyncio.gather(*tasks)
@@ -272,9 +272,12 @@ async def scan_admin_pages(url):
         tasks = [check_admin_page(session, url, path, semaphore) for path in admin_paths]
         results = []
         for future in tqdm(asyncio.as_completed(tasks), total=len(tasks), desc="Scanning", unit=" path"):
-            result = await future
-            if result:
-                results.append(result)
+            try:
+                result = await future
+                if result:
+                    results.append(result)
+            except Exception as e:
+                logger.error(f"Error in scanning: {e}")
         return results
 
 # Main function to orchestrate all tasks
@@ -313,4 +316,7 @@ def main():
     asyncio.run(asyncio.gather(detect(), scan()))
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        logger.error(f"Unexpected error occurred: {e}")
