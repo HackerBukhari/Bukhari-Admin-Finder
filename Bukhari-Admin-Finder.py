@@ -9,7 +9,6 @@ from urllib.parse import urljoin
 import re
 import time
 from dns.resolver import Resolver
-from fake_useragent import UserAgent, FakeUserAgentError  # Added handling for errors
 import requests
 
 # Logging setup
@@ -172,21 +171,17 @@ default_credentials = [
     ("admin", "root123"), ("guest", "guest"), ("support", "support")
 ]
 
-# Get a random user agent safely
+# Predefined list of User-Agents (without fake_useragent)
+user_agents = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Firefox/89.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 6.1; WOW64; rv:40.0) Gecko/20100101 Firefox/40.0"
+]
+
+# Get a random user agent from the predefined list
 def get_random_user_agent():
-    try:
-        ua = UserAgent()
-        return ua.random
-    except FakeUserAgentError:
-        # Fallback if fake_useragent fails
-        logger.warning("FakeUserAgent failed. Falling back to a static set of user agents.")
-        user_agents = [
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Firefox/89.0",
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-            "Mozilla/5.0 (Windows NT 6.1; WOW64; rv:40.0) Gecko/20100101 Firefox/40.0"
-        ]
-        return random.choice(user_agents)
+    return random.choice(user_agents)
 
 # Async DNS Subdomain discovery
 async def discover_subdomains(domain):
