@@ -3,5 +3,5 @@
   
  2) cd Bukhari-Admin-Finder
  
- 3)  pytho3 Bukhari-Admin-Finder.py https://example.com
+ 3)  python3 Bukhari-Admin-Finder.py https://example.com
     
