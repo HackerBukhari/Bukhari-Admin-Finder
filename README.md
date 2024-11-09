@@ -1,5 +1,5 @@
 # Bukhari-Admin-Finder By Syed Sultan Mehmood Shah BukhArii  
- 1) pip install aiohttp colorama tqdm dnspython
+ 1) pip install fake-useragent
 
  2) git clone https://github.com/HackerBukhari/Bukhari-Admin-Finder.git
  
