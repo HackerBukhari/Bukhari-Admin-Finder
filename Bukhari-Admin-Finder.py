@@ -1,6 +1,6 @@
 import requests
 from urllib.parse import urljoin
-import time
+from concurrent.futures import ThreadPoolExecutor
 
 # Common admin paths
 admin_paths = [
@@ -12,7 +12,11 @@ admin_paths = [
     "/admin_area",
     "/backend",
     "/login",
-    "/adminpanel"
+    "/adminpanel",
+    "/controlpanel",
+    "/user",
+    "/panel",
+    "/cms"
     '/wp-admin/', '/wp-login.php', '/wp-login', '/wp-admin.php', '/wp-login-form',
 
     # Joomla
@@ -162,26 +166,29 @@ def check_admin_url(base_url, path):
         response = requests.get(url, timeout=5)
         if response.status_code == 200:
             print(f"[+] Found Admin Login Page: {url}")
+            return url
         else:
             print(f"[-] Not Found: {url} (Status Code: {response.status_code})")
     except requests.RequestException as e:
         print(f"[-] Error accessing {url}: {e}")
 
-# Function to check all admin paths
+# Function to execute the check with multithreading
 def find_admin_pages(base_url):
-    for path in admin_paths:
-        check_admin_url(base_url, path)
-
-# Main function to start the process
-def start_checking(base_url):
-    print(f"Starting Admin Page Search for {base_url}")
-    find_admin_pages(base_url)
+    print(f"[*] Starting search for admin login pages on: {base_url}")
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = [executor.submit(check_admin_url, base_url, path) for path in admin_paths]
+        for future in futures:
+            result = future.result()
+            if result:
+                print(f"[!] Possible admin page found: {result}")
 
 # User-friendly interface
 def user_friendly_interface():
     website_url = input("Enter the website URL (e.g., https://example.com): ").strip()
+    if not website_url.startswith("http://") and not website_url.startswith("https://"):
+        website_url = "http://" + website_url
     print(f"[*] Checking for admin login page at: {website_url}")
-    start_checking(website_url)
+    find_admin_pages(website_url)
 
 if __name__ == "__main__":
     user_friendly_interface()
