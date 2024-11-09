@@ -6,6 +6,7 @@ from tqdm import tqdm
 from colorama import Fore, Style
 import argparse
 from urllib.parse import urljoin
+import re
 from dns.resolver import Resolver
 
 # Logging setup
@@ -246,7 +247,8 @@ async def check_admin_page(session, url, path, semaphore):
 
 # Main function for scanning admin pages across different paths
 async def scan_admin_pages(url):
-    async with aiohttp.ClientSession() as session:  # Removed TCPConnector, using default settings
+    # Removed TCPConnector, using default aiohttp connection settings
+    async with aiohttp.ClientSession() as session:
         semaphore = asyncio.Semaphore(500)  # Increase the limit for more concurrency
         tasks = [check_admin_page(session, url, path, semaphore) for path in admin_paths]
         results = []
