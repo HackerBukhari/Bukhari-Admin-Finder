@@ -1,25 +1,24 @@
-import asyncio
 import aiohttp
-import random
-import logging
-from tqdm import tqdm
-from colorama import Fore, Style
-import argparse
+import asyncio
 from urllib.parse import urljoin
-import re
-import time
-from dns.resolver import Resolver
-import requests
+from playwright.async_api import async_playwright
+import colorama
+from tqdm import tqdm
 
-# Logging setup
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+colorama.init(autoreset=True)
 
-# Admin Paths (dynamic paths list)
+# Common admin paths
 admin_paths = [
-    "/admin", "/admin/login", "/admin.php", "/admin-panel", "/admin123", "/cpanel", "/administrator",
-    "/wp-admin", "/user/login", "/wp-login.php", "/manage", "/console", "/webadmin", "/secure", "/dashboard",
-    "/adminarea", "/admin-login", "/backend", "/login.php", "/superadmin" 
+    "/admin",
+    "/administrator",
+    "/admin/login",
+    "/admin/index.php",
+    "/wp-admin",
+    "/admin_area",
+    "/backend",
+    "/login",
+    "/adminpanel"
+    
     # WordPress
     '/wp-admin/', '/wp-login.php', '/wp-login', '/wp-admin.php', '/wp-login-form',
 
@@ -164,159 +163,81 @@ admin_paths = [
 
 ]
 
-# Default credentials for login testing
-default_credentials = [
-    ("admin", "admin"), ("root", "root"), ("admin", "password"), ("user", "user"),
-    ("admin", "123456"), ("admin", "admin123"), ("test", "test"), ("admin", "welcome"),
-    ("admin", "root123"), ("guest", "guest"), ("support", "support")
-]
-
-# Predefined list of User-Agents (without fake_useragent)
-user_agents = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Firefox/89.0",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 6.1; WOW64; rv:40.0) Gecko/20100101 Firefox/40.0"
-]
-
-# Get a random user agent from the predefined list
-def get_random_user_agent():
-    return random.choice(user_agents)
-
-# Async DNS Subdomain discovery
-async def discover_subdomains(domain):
-    resolver = Resolver()
-    subdomains = ['admin', 'cpanel', 'dashboard', 'dev', 'webmail', 'login', 'staging']
-    found_subdomains = []
-    
-    async def resolve_subdomain(subdomain):
-        try:
-            target = f"{subdomain}.{domain}"
-            ip = resolver.resolve(target, 'A')
-            found_subdomains.append(target)
-            logger.info(f"Discovered Subdomain: {target}")
-        except Exception as e:
-            logger.error(f"DNS Error for {subdomain}: {e}")
-
-    tasks = [resolve_subdomain(sub) for sub in subdomains]
-    await asyncio.gather(*tasks)
-    return found_subdomains
-
-# Web Technology Fingerprint (detect CMS and server technologies)
-async def detect_technology(session, url):
-    headers = {'User-Agent': get_random_user_agent()}
+# Intelligent path detection: We try to detect possible admin areas by scraping robots.txt, HTTP headers, etc.
+async def intelligent_detection(base_url):
     try:
-        async with session.get(url, headers=headers) as response:
-            if 'WordPress' in await response.text():
-                return 'WordPress'
-            elif 'Joomla' in await response.text():
-                return 'Joomla'
-            elif 'Magento' in await response.text():
-                return 'Magento'
-            elif 'Django' in await response.text():
-                return 'Django'
-            elif 'Flask' in await response.text():
-                return 'Flask'
-            elif 'nginx' in response.headers.get('Server', '').lower():
-                return 'Nginx'
-            elif 'Apache' in response.headers.get('Server', '').lower():
-                return 'Apache'
-    except Exception as e:
-        logger.error(f"Error detecting technology for {url}: {e}")
-    return None
-
-# Login Testing with Rate Limiting
-async def test_login(session, url, path, semaphore):
-    full_url = urljoin(url, path)
-    headers = {'User-Agent': get_random_user_agent()}
-    
-    for username, password in default_credentials:
-        form_data = {'username': username, 'password': password}
-        try:
-            async with semaphore, session.post(full_url, headers=headers, data=form_data) as response:
+        async with aiohttp.ClientSession() as session:
+            # Scraping robots.txt to find any restricted areas
+            robots_url = urljoin(base_url, "/robots.txt")
+            async with session.get(robots_url) as response:
                 if response.status == 200:
                     content = await response.text()
-                    if "welcome" in content.lower() or "dashboard" in content.lower():
-                        logger.info(f"{Fore.GREEN}[+] Login Success: {username}:{password} at {full_url}{Style.RESET_ALL}")
-                        return full_url
-        except Exception as e:
-            logger.error(f"Error testing login on {full_url}: {e}")
-        await asyncio.sleep(random.uniform(0.5, 2))
-    return None
-
-# Admin Page Detection
-async def check_admin_page(session, url, path, semaphore):
-    full_url = urljoin(url, path)
-    headers = {'User-Agent': get_random_user_agent()}
-    
-    try:
-        async with semaphore, session.get(full_url, headers=headers) as response:
-            if response.status == 200:
-                content = await response.text()
-                if re.search(r'<form[^>]*method="post"[^>]*>', content, re.IGNORECASE):
-                    logger.info(f"{Fore.GREEN}[+] Login Form Detected at {full_url}{Style.RESET_ALL}")
-                    login_result = await test_login(session, url, path, semaphore)
-                    if login_result:
-                        return login_result
-                elif "login" in content.lower() or "admin" in content.lower():
-                    logger.info(f"{Fore.YELLOW}[+] Possible Admin Page: {full_url}{Style.RESET_ALL}")
-                    return full_url
+                    if "admin" in content or "wp-admin" in content:
+                        print(f"{colorama.Fore.CYAN}[!] Found potential admin paths in robots.txt")
+                        return True
     except Exception as e:
-        logger.error(f"Error checking {full_url}: {e}")
-    return None
+        print(f"{colorama.Fore.RED}[-] Error in intelligent detection: {e}")
+    return False
 
-# Main function for scanning admin pages
-async def scan_admin_pages(url):
+# Function to check if a URL is responsive
+async def check_admin_url(session, base_url, path):
+    url = urljoin(base_url, path)
+    try:
+        async with session.get(url, timeout=5) as response:
+            if response.status == 200:
+                print(f"{colorama.Fore.GREEN}[+] Found Admin Login Page: {url}")
+            else:
+                print(f"{colorama.Fore.RED}[-] Not Found: {url} (Status Code: {response.status})")
+    except aiohttp.ClientError:
+        print(f"{colorama.Fore.RED}[-] Failed to connect: {url}")
+
+# Function to use headless browser (Playwright) to find hidden admin login pages
+async def check_with_playwright(base_url):
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        page = await browser.new_page()
+
+        try:
+            await page.goto(base_url, timeout=10000)
+            # Try to detect possible login forms or admin elements via heuristics
+            admin_elements = ['login', 'admin', 'dashboard', 'sign-in']
+            for element in admin_elements:
+                if await page.query_selector(f'[href*="{element}"],[class*="{element}"],[id*="{element}"]'):
+                    print(f"{colorama.Fore.GREEN}[+] Found potential admin login page using Playwright: {base_url}")
+                    break
+        except Exception as e:
+            print(f"{colorama.Fore.RED}[-] Playwright Error: {e}")
+        finally:
+            await browser.close()
+
+# Function to check all admin paths asynchronously
+async def find_admin_pages(base_url):
     async with aiohttp.ClientSession() as session:
-        semaphore = asyncio.Semaphore(500)  # Adjust concurrency for faster requests
-        tasks = [check_admin_page(session, url, path, semaphore) for path in admin_paths]
-        results = []
-        for future in tqdm(asyncio.as_completed(tasks), total=len(tasks), desc="Scanning", unit=" path"):
-            try:
-                result = await future
-                if result:
-                    results.append(result)
-            except Exception as e:
-                logger.error(f"Error in scanning: {e}")
-        return results
+        tasks = []
+        for path in admin_paths:
+            tasks.append(check_admin_url(session, base_url, path))
+        await asyncio.gather(*tasks)
 
-# Main function to orchestrate all tasks
-def main():
-    parser = argparse.ArgumentParser(description="Advanced Admin Finder with Enhanced Features")
-    parser.add_argument("url", help="The base URL of the website (e.g., https://example.com)")
-    args = parser.parse_args()
+# Main function to start the process
+async def start_checking(base_url):
+    print(f"{colorama.Fore.CYAN}Starting Admin Page Search for {base_url}")
 
-    print(f"{Fore.CYAN}Starting Advanced Admin Finder...{Style.RESET_ALL}")
-    url = args.url.rstrip('/')
-
-    # Discover subdomains asynchronously
-    domain = url.split('/')[2]
-    subdomains = asyncio.run(discover_subdomains(domain))
-    if subdomains:
-        logger.info(f"Discovered Subdomains: {', '.join(subdomains)}")
+    # Perform intelligent detection first (robots.txt, etc.)
+    if await intelligent_detection(base_url):
+        print(f"{colorama.Fore.CYAN}[!] Potential admin area detected via robots.txt or heuristics.")
     
-    # Detect web technologies
-    async def detect():
-        async with aiohttp.ClientSession() as session:
-            tech = await detect_technology(session, url)
-            if tech:
-                print(f"{Fore.GREEN}Detected Technology: {tech}{Style.RESET_ALL}")
+    # Start checking the known admin paths
+    await find_admin_pages(base_url)
 
-    # Scan for admin pages
-    async def scan():
-        results = asyncio.run(scan_admin_pages(url))
-        if results:
-            print(f"\n{Fore.GREEN}Admin pages found:{Style.RESET_ALL}")
-            for admin_url in results:
-                print(f"{Fore.GREEN}{admin_url}{Style.RESET_ALL}")
-        else:
-            print(f"{Fore.RED}No admin pages found.{Style.RESET_ALL}")
+    # Using Playwright as a fallback for sites that might have hidden paths
+    await check_with_playwright(base_url)
 
-    # Run both tasks concurrently
-    asyncio.run(asyncio.gather(detect(), scan()))
+# User-friendly interface
+def user_friendly_interface():
+    website_url = input("Enter the website URL (e.g., https://example.com): ").strip()
+    print(f"{colorama.Fore.YELLOW}[*] Checking for admin login page at: {website_url}")
+    
+    asyncio.run(start_checking(website_url))
 
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception as e:
-        logger.error(f"Unexpected error occurred: {e}")
+    user_friendly_interface()
