@@ -13,7 +13,6 @@ logger = logging.getLogger(__name__)
 
 # Expanded admin paths list (sample paths provided; continue to 5k+ for production)
 admin_paths = [
-admin_paths += [
     # WordPress
     '/wp-admin/', '/wp-login.php', '/wp-login', '/wp-admin.php', '/wp-login-form',
 
