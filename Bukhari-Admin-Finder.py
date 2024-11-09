@@ -10,8 +10,6 @@ import re
 import time
 from dns.resolver import Resolver
 from fake_useragent import UserAgent
-import json
-import socket
 
 # Logging setup
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -164,7 +162,6 @@ admin_paths = [
     '/yonetici.php', '/yonetim.asp', '/yonetim.html', '/yonetim.php'
     
 
-    
 ]
 
 # Advanced Brute-force default credentials (large list for comprehensive testing)
@@ -202,15 +199,15 @@ async def detect_technology(session, url):
     headers = {'User-Agent': random.choice(user_agents)}
     try:
         async with session.get(url, headers=headers) as response:
-            if 'WordPress' in response.text():
+            if 'WordPress' in await response.text():
                 return 'WordPress'
-            elif 'Joomla' in response.text():
+            elif 'Joomla' in await response.text():
                 return 'Joomla'
-            elif 'Magento' in response.text():
+            elif 'Magento' in await response.text():
                 return 'Magento'
-            elif 'Django' in response.text():
+            elif 'Django' in await response.text():
                 return 'Django'
-            elif 'Flask' in response.text():
+            elif 'Flask' in await response.text():
                 return 'Flask'
             elif 'nginx' in response.headers.get('Server', '').lower():
                 return 'Nginx'
@@ -290,19 +287,24 @@ def main():
         logger.info(f"Discovered Subdomains: {', '.join(subdomains)}")
     
     # Detect web technologies
-    async with aiohttp.ClientSession() as session:
-        tech = asyncio.run(detect_technology(session, url))
-        if tech:
-            print(f"{Fore.GREEN}Detected Technology: {tech}{Style.RESET_ALL}")
+    async def detect():
+        async with aiohttp.ClientSession() as session:
+            tech = await detect_technology(session, url)
+            if tech:
+                print(f"{Fore.GREEN}Detected Technology: {tech}{Style.RESET_ALL}")
 
     # Scan for admin pages
-    results = asyncio.run(scan_admin_pages(url))
-    if results:
-        print(f"\n{Fore.GREEN}Admin pages found:{Style.RESET_ALL}")
-        for admin_url in results:
-            print(f"{Fore.GREEN}{admin_url}{Style.RESET_ALL}")
-    else:
-        print(f"{Fore.RED}No admin pages found.{Style.RESET_ALL}")
+    async def scan():
+        results = await scan_admin_pages(url)
+        if results:
+            print(f"\n{Fore.GREEN}Admin pages found:{Style.RESET_ALL}")
+            for admin_url in results:
+                print(f"{Fore.GREEN}{admin_url}{Style.RESET_ALL}")
+        else:
+            print(f"{Fore.RED}No admin pages found.{Style.RESET_ALL}")
+
+    # Run both tasks concurrently
+    asyncio.run(asyncio.gather(detect(), scan()))
 
 if __name__ == "__main__":
     main()
