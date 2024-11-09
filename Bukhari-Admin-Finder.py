@@ -75,9 +75,7 @@ admin_paths = [
     '/adminpanel-backend', '/adminuserform.php', '/admin_backoffice-form', '/administrator_loginform', '/adminbackoffice-check', '/admin-entry-check',
     '/admin_login_page-check', '/admin-configpath', '/admin-checkpath', '/admin-loging-page', '/admin-panel-checker',
     '/adminpage-access', '/admin-access-check', '/adminpath-checker', '/admin-check-access', '/adminuser-loginform', '/admin-entranceform'
-]
-
-    # Additional placeholder paths (continue to expand this list)
+ 
     '/admin', '/admin.php', '/adminpanel', '/administrator', '/admin123', '/admin/login', '/admin/login.php', '/administrator.php',
     '/admin_area', '/adminpanel/login', '/admin-login', '/adminpanel/index.php', '/admin_area.php', '/user/admin', '/wp-admin',
     '/admin-console', '/cpanel', '/admin-console/login', '/admin-control', '/admin_config', '/admin-dashboard', '/adminpanel-control',
