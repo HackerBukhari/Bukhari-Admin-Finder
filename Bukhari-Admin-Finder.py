@@ -1,23 +1,13 @@
 import requests
 from urllib.parse import urljoin
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import os
 
-# Common admin paths
+# List of common admin paths to check
 admin_paths = [
-    "/admin",
-    "/administrator",
-    "/admin/login",
-    "/admin/index.php",
-    "/wp-admin",
-    "/admin_area",
-    "/backend",
-    "/login",
-    "/adminpanel",
-    "/controlpanel",
-    "/user",
-    "/panel",
-    "/cms"
-    '/wp-admin/', '/wp-login.php', '/wp-login', '/wp-admin.php', '/wp-login-form',
+    "/admin", "/administrator", "/admin/login", "/admin/index.php", "/wp-admin",
+    "/admin_area", "/backend", "/login", "/adminpanel", "/controlpanel", "/user",
+    "/panel", "/cms" '/wp-admin/', '/wp-login.php', '/wp-login', '/wp-admin.php', '/wp-login-form',
 
     # Joomla
     '/administrator', '/administrator/index.php', '/administrator/login', '/administrator/admin-login',
@@ -159,35 +149,57 @@ admin_paths = [
     
 ]
 
-# Function to check if a URL is responsive
+# Function to check if an admin page exists at a specific URL
 def check_admin_url(base_url, path):
     url = urljoin(base_url, path)
     try:
-        response = requests.get(url, timeout=5)
+        # Using HEAD request to check existence faster without downloading the page content
+        response = requests.head(url, timeout=3)
         if response.status_code == 200:
-            print(f"[+] Found Admin Login Page: {url}")
+            print(f"\033[92m[+] Found Admin Login Page: {url}\033[0m")  # Green text for found
             return url
         else:
-            print(f"[-] Not Found: {url} (Status Code: {response.status_code})")
+            print(f"\033[91m[-] Not Found: {url} (Status Code: {response.status_code})\033[0m")  # Red text for not found
     except requests.RequestException as e:
-        print(f"[-] Error accessing {url}: {e}")
+        print(f"\033[93m[-] Error accessing {url}: {e}\033[0m")  # Yellow text for errors
 
-# Function to execute the check with multithreading
+# Function to find admin pages with multi-threading and collect results
 def find_admin_pages(base_url):
-    print(f"[*] Starting search for admin login pages on: {base_url}")
-    with ThreadPoolExecutor(max_workers=10) as executor:
-        futures = [executor.submit(check_admin_url, base_url, path) for path in admin_paths]
-        for future in futures:
+    print(f"\033[96m[*] Starting Bukhari-Admin-Finder on: {base_url}\033[0m")
+    found_pages = []
+
+    # Using ThreadPoolExecutor with a higher max_workers for increased speed
+    with ThreadPoolExecutor(max_workers=20) as executor:
+        futures = {executor.submit(check_admin_url, base_url, path): path for path in admin_paths}
+        for future in as_completed(futures):
             result = future.result()
             if result:
-                print(f"[!] Possible admin page found: {result}")
+                found_pages.append(result)
+
+    # Summary of results
+    if found_pages:
+        print("\n\033[94m[!] Admin login pages found:\033[0m")
+        for page in found_pages:
+            print(f"  - \033[92m{page}\033[0m")
+        save_results(base_url, found_pages)
+    else:
+        print("\n\033[91m[-] No admin login pages found.\033[0m")
+
+# Save results to a file for easy access
+def save_results(base_url, found_pages):
+    domain = base_url.split("//")[-1].split("/")[0]  # Extract domain for filename
+    filename = f"{domain}_admin_pages.txt"
+    with open(filename, "w") as file:
+        for page in found_pages:
+            file.write(page + "\n")
+    print(f"\n\033[96m[!] Results saved to {filename}\033[0m")
 
 # User-friendly interface
 def user_friendly_interface():
     website_url = input("Enter the website URL (e.g., https://example.com): ").strip()
     if not website_url.startswith("http://") and not website_url.startswith("https://"):
         website_url = "http://" + website_url
-    print(f"[*] Checking for admin login page at: {website_url}")
+    print(f"[*] Bukhari-Admin-Finder: Checking for admin login page at {website_url}")
     find_admin_pages(website_url)
 
 if __name__ == "__main__":
