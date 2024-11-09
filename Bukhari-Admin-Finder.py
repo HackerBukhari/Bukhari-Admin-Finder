@@ -6,7 +6,7 @@ from tqdm import tqdm
 from colorama import Fore, Style
 import argparse
 from urllib.parse import urljoin
-from aiohttp import TCPConnector, ClientTimeout
+from aiohttp import TCPConnector
 from dns.resolver import Resolver
 
 # Logging setup
@@ -214,7 +214,7 @@ async def test_login(session, url, path, semaphore):
     for username, password in default_credentials:
         form_data = {'username': username, 'password': password}
         try:
-            async with semaphore, session.post(full_url, headers=headers, data=form_data, timeout=3) as response:
+            async with semaphore, session.post(full_url, headers=headers, data=form_data) as response:
                 if response.status == 200:
                     content = await response.text()
                     if "welcome" in content.lower() or "dashboard" in content.lower():
@@ -230,7 +230,7 @@ async def check_admin_page(session, url, path, semaphore):
     headers = {'User-Agent': random.choice(user_agents)}
     
     try:
-        async with semaphore, session.get(full_url, headers=headers, timeout=3) as response:
+        async with semaphore, session.get(full_url, headers=headers) as response:
             if response.status == 200:
                 content = await response.text()
                 if re.search(r'<form[^>]*method="post"[^>]*>', content, re.IGNORECASE):
@@ -247,11 +247,10 @@ async def check_admin_page(session, url, path, semaphore):
 
 # Main function for scanning admin pages across different paths
 async def scan_admin_pages(url):
-    # Optimized timeout and connection pooling for better performance
-    timeout = ClientTimeout(total=5, connect=2, sock_connect=2, sock_read=3)
+    # Remove timeout feature to make requests unimpeded
     connector = TCPConnector(ssl=False, keep_alive_timeout=30, limit_per_host=10)
     
-    async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
+    async with aiohttp.ClientSession(connector=connector) as session:
         semaphore = asyncio.Semaphore(500)  # Increase the limit for more concurrency
         tasks = [check_admin_page(session, url, path, semaphore) for path in admin_paths]
         results = []
