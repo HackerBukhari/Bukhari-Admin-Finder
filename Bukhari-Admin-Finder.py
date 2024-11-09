@@ -1,11 +1,6 @@
-import aiohttp
-import asyncio
+import requests
 from urllib.parse import urljoin
-from playwright.async_api import async_playwright
-import colorama
-from tqdm import tqdm
-
-colorama.init(autoreset=True)
+import time
 
 # Common admin paths
 admin_paths = [
@@ -18,8 +13,6 @@ admin_paths = [
     "/backend",
     "/login",
     "/adminpanel"
-    
-    # WordPress
     '/wp-admin/', '/wp-login.php', '/wp-login', '/wp-admin.php', '/wp-login-form',
 
     # Joomla
@@ -160,84 +153,35 @@ admin_paths = [
     '/websvn/', '/wizmysqladmin/', '/wp-admin/', '/wp-login/', '/wplogin/', '/wp-login.php', '/xlogin/', '/yonetici.asp', '/yonetici.html', 
     '/yonetici.php', '/yonetim.asp', '/yonetim.html', '/yonetim.php'
     
-
 ]
 
-# Intelligent path detection: We try to detect possible admin areas by scraping robots.txt, HTTP headers, etc.
-async def intelligent_detection(base_url):
-    try:
-        async with aiohttp.ClientSession() as session:
-            # Scraping robots.txt to find any restricted areas
-            robots_url = urljoin(base_url, "/robots.txt")
-            async with session.get(robots_url) as response:
-                if response.status == 200:
-                    content = await response.text()
-                    if "admin" in content or "wp-admin" in content:
-                        print(f"{colorama.Fore.CYAN}[!] Found potential admin paths in robots.txt")
-                        return True
-    except Exception as e:
-        print(f"{colorama.Fore.RED}[-] Error in intelligent detection: {e}")
-    return False
-
 # Function to check if a URL is responsive
-async def check_admin_url(session, base_url, path):
+def check_admin_url(base_url, path):
     url = urljoin(base_url, path)
     try:
-        async with session.get(url, timeout=5) as response:
-            if response.status == 200:
-                print(f"{colorama.Fore.GREEN}[+] Found Admin Login Page: {url}")
-            else:
-                print(f"{colorama.Fore.RED}[-] Not Found: {url} (Status Code: {response.status})")
-    except aiohttp.ClientError:
-        print(f"{colorama.Fore.RED}[-] Failed to connect: {url}")
+        response = requests.get(url, timeout=5)
+        if response.status_code == 200:
+            print(f"[+] Found Admin Login Page: {url}")
+        else:
+            print(f"[-] Not Found: {url} (Status Code: {response.status_code})")
+    except requests.RequestException as e:
+        print(f"[-] Error accessing {url}: {e}")
 
-# Function to use headless browser (Playwright) to find hidden admin login pages
-async def check_with_playwright(base_url):
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        page = await browser.new_page()
-
-        try:
-            await page.goto(base_url, timeout=10000)
-            # Try to detect possible login forms or admin elements via heuristics
-            admin_elements = ['login', 'admin', 'dashboard', 'sign-in']
-            for element in admin_elements:
-                if await page.query_selector(f'[href*="{element}"],[class*="{element}"],[id*="{element}"]'):
-                    print(f"{colorama.Fore.GREEN}[+] Found potential admin login page using Playwright: {base_url}")
-                    break
-        except Exception as e:
-            print(f"{colorama.Fore.RED}[-] Playwright Error: {e}")
-        finally:
-            await browser.close()
-
-# Function to check all admin paths asynchronously
-async def find_admin_pages(base_url):
-    async with aiohttp.ClientSession() as session:
-        tasks = []
-        for path in admin_paths:
-            tasks.append(check_admin_url(session, base_url, path))
-        await asyncio.gather(*tasks)
+# Function to check all admin paths
+def find_admin_pages(base_url):
+    for path in admin_paths:
+        check_admin_url(base_url, path)
 
 # Main function to start the process
-async def start_checking(base_url):
-    print(f"{colorama.Fore.CYAN}Starting Admin Page Search for {base_url}")
-
-    # Perform intelligent detection first (robots.txt, etc.)
-    if await intelligent_detection(base_url):
-        print(f"{colorama.Fore.CYAN}[!] Potential admin area detected via robots.txt or heuristics.")
-    
-    # Start checking the known admin paths
-    await find_admin_pages(base_url)
-
-    # Using Playwright as a fallback for sites that might have hidden paths
-    await check_with_playwright(base_url)
+def start_checking(base_url):
+    print(f"Starting Admin Page Search for {base_url}")
+    find_admin_pages(base_url)
 
 # User-friendly interface
 def user_friendly_interface():
     website_url = input("Enter the website URL (e.g., https://example.com): ").strip()
-    print(f"{colorama.Fore.YELLOW}[*] Checking for admin login page at: {website_url}")
-    
-    asyncio.run(start_checking(website_url))
+    print(f"[*] Checking for admin login page at: {website_url}")
+    start_checking(website_url)
 
 if __name__ == "__main__":
     user_friendly_interface()
