@@ -156,11 +156,6 @@ admin_paths = [
     
 ]
 
-    
-    
-    # (Continue adding more paths to reach 5000 paths)
-]
-
 # List of User-Agent strings for rotation
 user_agents = [
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0 Safari/537.36',
